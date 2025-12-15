@@ -199,6 +199,7 @@ ssize_t fs_create() {
 
     (inode_cache + inode_pos) -> direct;
 
+    (inode_cache + inode_pos) -> indirect;
 
     return 0;
 }
