@@ -1,0 +1,486 @@
+#include <stdio.h>
+#include <string.h>
+#include "file.h"
+#include "stdlib.h"
+#include "disk_library/disk_emulator.h"
+
+int disk;
+
+void* cache_buff = NULL;
+
+uint_8 bitmap[512] = {0};
+
+void bitmap_init() {
+    memset(bitmap, 0xFF, sizeof(bitmap));
+}
+
+void create_cache(const int size) {
+    cache_buff = calloc(size, sizeof(char));
+}
+
+void clear_cache(int no_of_bytes) {
+    memset(cache_buff, 0, no_of_bytes);
+}
+
+void mark_bitmap(int op, int block_no) {
+    int index = block_no >> 3, bit_blk = 7 - (block_no & 7);
+
+    if (op) {
+        *(bitmap + index) |= 1 << bit_blk ;
+    }
+    else {
+        *(bitmap + index) &= ~(1 << bit_blk);
+    }
+
+}
+
+void sync_bitmap(int disk, int bit_mp_block, void* cache) {
+    read_block(disk, bit_mp_block, cache);
+
+    memcpy(cache, bitmap, sizeof(bitmap));
+
+    write_block(disk, bit_mp_block, cache);
+
+    clear_cache(sizeof(bitmap));
+
+}
+
+// bool block_is_free(int block_no) {
+//
+// }
+
+bool fs_format() {
+    create_cache(PAGE_SIZE);
+
+    bitmap_init();
+
+    SuperBlock* sup_blk_buff = cache_buff;
+
+    SuperBlock sup = {MAGIC_NUMBER, BLOCKS, INODE_BLOCKS, INODES, BIT_MAP_BLK_NO};
+
+    disk = open_disk(DISK_PATH, DISK_SIZE);
+
+    read_block(disk, SUP_BLK_NO, sup_blk_buff);
+
+    *sup_blk_buff = sup;
+
+    write_block(disk, SUP_BLK_NO, sup_blk_buff);
+
+    clear_cache(sizeof(SuperBlock));
+
+    mark_bitmap(MARK_ALLOCATED, 0);
+
+    sync_bitmap(disk, BIT_MAP_BLK_NO, cache_buff);
+
+    return true;
+
+}
+
+bool mount_fs() {
+
+    read_block(disk, SUP_BLK_NO, cache_buff);
+
+    SuperBlock* sup_blk_ptr = cache_buff;
+
+    if (sup_blk_ptr->magic_number == MAGIC_NUMBER) {
+        mount();
+    }
+
+
+}
+
+#include <string.h>
+#include "file.h"
+#include "stdlib.h"
+#include "disk_library/disk_emulator.h"
+
+
+int disk;
+
+static void* shared_cache = NULL;
+
+static uint_8* bitmap_cache = NULL;
+
+static SuperBlock* super_cache = NULL;
+
+static Inode* inode_cache = NULL;
+
+static uint_8 bitmap[512] = {0};
+
+
+void bitmap_init() {
+    memset(bitmap, 0xFF, sizeof(bitmap));
+}
+
+void create_caches() {
+    shared_cache = calloc(4096, sizeof(char));
+
+    bitmap_cache = calloc(4096, sizeof(char));
+
+    super_cache = calloc(256, sizeof(SuperBlock));
+
+    inode_cache = calloc(128, sizeof(Inode));
+}
+
+void clear_shared_cache(int no_of_bytes) {
+    memset(shared_cache, 0, no_of_bytes);
+}
+
+void mark_bitmap(int op, int block_no) {
+    int index = block_no >> 3, bit_blk = 7 - (block_no & 7);
+
+    if (op) {
+        *(bitmap + index) |= 1 << bit_blk ;
+    }
+    else {
+        *(bitmap + index) &= ~(1 << bit_blk);
+    }
+
+}
+
+void sync_bitmap(int disk, int bit_mp_block, void* cache) {
+    read_block(disk, bit_mp_block, cache);
+
+    mark_bitmap(MARK_ALLOCATED, bit_mp_block);
+
+    memcpy(cache, bitmap, sizeof(bitmap));
+
+    write_block(disk, bit_mp_block, cache);
+
+}
+
+int search_free_datablocks(int block_no) {
+    if (block_no > PAGE_SIZE) return -1;
+
+    int index = block_no >> 3, bit_blk = 7 - (block_no & 7);
+
+    return ((*(bitmap_cache + index) >> bit_blk) & 1) == 1;
+}
+
+void write_free_datablocks(uint_32* direct_ptr) {
+    for (int i = 413, j = 0; i < PAGE_SIZE; i++) {
+        if (search_free_datablocks(i) && j <= 5) {
+            *(direct_ptr + j) = i;
+            mark_bitmap(MARK_ALLOCATED, i);
+            j++;
+        }
+        else if (j > 5) break;
+    }
+}
+
+bool fs_format() {
+    create_caches();
+
+    bitmap_init();
+
+    SuperBlock sup = {MAGIC_NUMBER, BLOCKS, INODE_BLOCKS, INODES, BIT_MAP_BLK_NO};
+
+    disk = open_disk(DISK_PATH, DISK_SIZE);
+
+    read_block(disk, SUP_BLK_NO, super_cache);
+
+    *super_cache = sup;
+
+    write_block(disk, SUP_BLK_NO, super_cache);
+
+    mark_bitmap(MARK_ALLOCATED, 0);
+
+    for (int i = 1; i <= INODE_BLOCKS; i++) mark_bitmap(MARK_ALLOCATED, i);
+
+    sync_bitmap(disk, BIT_MAP_BLK_NO, bitmap_cache);
+
+    return true;
+
+}
+
+bool fs_mount() {
+    if (disk > 0) {
+        read_block(disk, SUP_BLK_NO, super_cache);
+
+        read_block(disk, BIT_MAP_BLK_NO, bitmap_cache);
+
+        SuperBlock* sup_blk_ptr = super_cache;
+
+        if (sup_blk_ptr -> magic_number == MAGIC_NUMBER) {
+            mount();
+            return is_mounted();
+        }
+    }
+    return false;
+}
+
+ssize_t fs_create() {
+    Inode* inode = NULL;
+
+    for (int i = 1, k = 0; i <= INODE_BLOCKS; i++) {
+        read_block(disk, i, inode_cache);
+
+        for (int j = 0; j < 128; j++) {
+
+            if (!(inode_cache + j) -> valid) {
+
+                inode = inode_cache + j;
+
+                k = i;
+
+                i = INODE_BLOCKS + 1;
+
+                break;
+            }
+        }
+    }
+
+    if (inode) {
+        inode -> valid = 1;
+        inode -> size = 32;
+        inode -> indirect = 412;
+        write_free_datablocks(inode -> direct);
+
+    }
+
+    else {
+        perror("No inode available");
+        return -1;
+    }
+
+    return 0;
+}
+
+#include <string.h>
+#include "file.h"
+#include "stdlib.h"
+#include "disk_library/disk_emulator.h"
+
+
+int disk;
+
+static void* shared_cache = NULL;
+
+static uint_8* bitmap_cache = NULL;
+
+static SuperBlock* super_cache = NULL;
+
+static Inode* inode_cache = NULL;
+
+static uint_8 disk_bitmap[512] = {0};
+
+static uint_8* inode_bitmap = NULL;
+
+void bitmaps_init() {
+    inode_bitmap = calloc(INODE_BIT_MAP_SIZE, sizeof(uint_8));
+
+    memset(disk_bitmap, 0xFF, sizeof(disk_bitmap));
+
+    memset(inode_bitmap, 0xFF, INODE_BIT_MAP_SIZE);
+}
+
+void create_caches() {
+    shared_cache = calloc(4096, sizeof(char));
+
+    bitmap_cache = calloc(4096, sizeof(char));
+
+    super_cache = calloc(256, sizeof(SuperBlock));
+
+    inode_cache = calloc(128, sizeof(Inode));
+}
+
+void clear_shared_cache(int no_of_bytes) {
+    memset(shared_cache, 0, no_of_bytes);
+}
+
+void mark_bitmap(uint_8* bitmap_t, int op, int block_no) {
+    int index = block_no >> 3, bit_blk = 7 - (block_no & 7);
+
+    if (op) {
+        *(bitmap_t + index) |= 1 << bit_blk ;
+    }
+    else {
+        *(bitmap_t + index) &= ~(1 << bit_blk);
+    }
+
+}
+
+void sync_bitmap(int disk, int bit_mp_block, void* cache) {
+    read_block(disk, bit_mp_block, cache);
+
+    mark_bitmap(disk_bitmap, MARK_ALLOCATED, bit_mp_block);
+
+    memcpy(cache, disk_bitmap, sizeof(disk_bitmap));
+
+    write_block(disk, bit_mp_block, cache);
+
+}
+
+int search_free_datablocks(int block_no) {
+    if (block_no > PAGE_SIZE) return -1;
+
+    int index = block_no >> 3, bit_blk = 7 - (block_no & 7);
+
+    return ((*(bitmap_cache + index) >> bit_blk) & 1) == 1;
+}
+
+// void write_free_datablocks(uint_32* direct_ptr) {
+//     for (int i = 413, j = 0; i < PAGE_SIZE; i++) {
+//         if (search_free_datablocks(i) && j <= 5) {
+//             *(direct_ptr + j) = i;
+//             mark_bitmap(MARK_ALLOCATED, i);
+//             j++;
+//         }
+//         else if (j > 5) break;
+//     }
+// }
+
+bool fs_format() {
+    create_caches();
+
+    bitmaps_init();
+
+    SuperBlock sup = {MAGIC_NUMBER, BLOCKS, INODE_BLOCKS, INODES, BIT_MAP_BLK_NO};
+
+    disk = open_disk(DISK_PATH, DISK_SIZE);
+
+    read_block(disk, SUP_BLK_NO, super_cache);
+
+    *super_cache = sup;
+
+    write_block(disk, SUP_BLK_NO, super_cache);
+
+    mark_bitmap(disk_bitmap, MARK_ALLOCATED, 0);
+
+    for (int i = 1; i <= INODE_BLOCKS; i++) mark_bitmap(disk_bitmap, MARK_ALLOCATED, i);
+
+    sync_bitmap(disk, BIT_MAP_BLK_NO, bitmap_cache);
+
+    return true;
+
+}
+
+bool fs_mount() {
+    if (disk > 0) {
+        read_block(disk, SUP_BLK_NO, super_cache);
+
+        read_block(disk, BIT_MAP_BLK_NO, bitmap_cache);
+
+        SuperBlock* sup_blk_ptr = super_cache;
+
+        if (sup_blk_ptr -> magic_number == MAGIC_NUMBER) {
+            mount();
+            return is_mounted();
+        }
+    }
+    return false;
+}
+
+ssize_t fs_create() {
+    Inode* inode = NULL;
+
+    // for (int i = 1, k = 0; i <= INODE_BLOCKS; i++) {
+    //     read_block(disk, i, inode_cache);
+    //
+    //     for (int j = 0; j < 128; j++) {
+    //
+    //         if (!(inode_cache + j) -> valid) {
+    //
+    //             inode = inode_cache + j;
+    //
+    //             k = i;
+    //
+    //             i = INODE_BLOCKS + 1;
+    //
+    //             break;
+    //         }
+    //     }
+    // }
+
+    // if (inode) {
+    //     inode -> valid = 1;
+    //     inode -> size = 32;
+    //     inode -> indirect = 412;
+    //     write_free_datablocks(inode -> direct);
+    //
+    // }
+
+    // else {
+    //     perror("No inode available");
+    //     return -1;
+    // }
+    //
+    // return 0;
+}
+
+#pragma once
+#include <stdbool.h>
+#include <stdio.h>
+
+#define FILE_MAX_SIZE                    7 << 12
+#define MAGIC_NUMBER                     0xFEED       // 65261
+#define BLOCKS                           4096
+#define INODE_BLOCKS                     410
+#define INODES                           52480
+#define DIRECT_POINTERS_PER_INODE        6
+#define SUP_BLK_NO                       0
+#define BIT_MAP_BLK_NO                   411
+#define INODE_BIT_MAP_SIZE               6560
+
+#define MARK_FREE                        1
+#define MARK_ALLOCATED                   0
+
+
+typedef unsigned char uint_8;
+
+typedef unsigned short uint_16;
+
+typedef unsigned int uint_32;
+
+typedef unsigned long uint_64;
+
+
+typedef struct superblock {
+
+    uint_16 magic_number;
+    uint_16 blocks;
+    uint_16 inode_blocks;
+    uint_16 inodes;
+    uint_64 bitmap_block;
+
+} SuperBlock;
+
+typedef struct inode {
+
+    uint_16 valid;
+    uint_16 size;
+    uint_32 direct[DIRECT_POINTERS_PER_INODE];
+    uint_32 indirect;
+
+} Inode;
+
+typedef struct directory_entry {
+    char* file_name;
+    int i_fd;
+} D_Entry;
+
+
+bool fs_format();
+
+bool fs_mount();
+
+ssize_t fs_create();
+
+// int search_free_datablocks(int block_no) {
+//     if (block_no > PAGE_SIZE) return -1;
+//
+//     int index = block_no >> 3, bit_blk = 7 - (block_no & 7);
+//
+//     return ((*(fs_bitmap_cache + index) >> bit_blk) & 1) == 1;
+// }
+//
+// void write_free_datablocks(uint_32* direct_ptr) {
+//     for (int i = 415, j = 0; i < PAGE_SIZE; i++) {
+//         if (search_free_datablocks(i) && j <= 5) {
+//             *(direct_ptr + j) = i;
+//             mark_bitmap(MARK_ALLOCATED, i);
+//             j++;
+//         }
+//         else if (j > 5) break;
+//     }
+// }
