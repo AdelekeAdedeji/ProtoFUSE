@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#define IS_A_FILE                        1
 #define FILE_MAX_SIZE                    7 << 12
 #define MAGIC_NUMBER                     0xFEED       // 65261
 #define BLOCKS                           4096
@@ -55,6 +56,28 @@ typedef struct directory_entry {
     int i_fd;
 } D_Entry;
 
+
+void create_caches();
+
+void fs_bitmap_init();
+
+void inode_bitmap_init();
+
+void clear_shared_cache(int no_of_bytes);
+
+ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no);
+
+bool search_bitmap(uint_8* bitmap, int entity_no);
+
+int mark_bitmap(uint_8* bitmap, int op, int entity_no);
+
+void sync_fs_bitmap(int disk);
+
+void sync_inode_bitmap(int disk);
+
+int find_free_inode();
+
+int allocate_free_blocks(uint_32* direct_ptr);
 
 bool fs_format();
 
