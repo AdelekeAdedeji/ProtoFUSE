@@ -39,7 +39,6 @@ typedef struct superblock {
     uint_16 inode_bitmap_block1;
     uint_16 inode_bitmap_block2;
 
-
 } SuperBlock;
 
 typedef struct inode {
@@ -67,7 +66,7 @@ void clear_shared_cache(int no_of_bytes);
 
 ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no);
 
-bool search_bitmap(uint_8* bitmap, int entity_no);
+int search_bitmap(uint_8* bitmap, int entity_no);
 
 int mark_bitmap(uint_8* bitmap, int op, int entity_no);
 
@@ -79,8 +78,12 @@ int find_free_inode();
 
 int allocate_free_blocks(uint_32* direct_ptr);
 
+int free_allocated_blocks(uint_16 size, uint_32* direct_ptr);
+
 bool fs_format();
 
 bool fs_mount();
 
 ssize_t fs_create();
+
+ssize_t fs_remove(int inode_id);

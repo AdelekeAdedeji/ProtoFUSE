@@ -59,6 +59,8 @@ void clear_shared_cache(int no_of_bytes) {
 ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no) {
     int check_entity_no = 0;
 
+    if (entity_no < 0) return check_entity_no;
+
     if (bitmap_t == fs_bitmap_cache) {
         check_entity_no = entity_no < 4096;
     }
@@ -72,7 +74,7 @@ ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no) {
 }
 
 
-bool search_bitmap(uint_8* bitmap, int entity_no) {
+int search_bitmap(uint_8* bitmap, int entity_no) {
     int index, bit_blk;
 
     if (!get_correct_entity(bitmap, entity_no)) {
@@ -116,6 +118,67 @@ void sync_inode_bitmap(int disk) {
     write_block(disk, super_cache->inode_bitmap_block1, inode_bitmap_cache);
 
     write_block(disk, super_cache->inode_bitmap_block2, inode_bitmap_cache + PAGE_SIZE);
+}
+
+
+int find_free_inode() {
+    int inode_idx;
+
+    for (inode_idx = 0; inode_idx < super_cache -> inodes; inode_idx++) {
+        if (search_bitmap(inode_bitmap_cache, inode_idx)) {
+            return inode_idx;
+        }
+    }
+
+    return -1;
+}
+
+
+int allocate_free_blocks(uint_32* direct_ptr) {
+    int free_block_id, j = 0;
+
+    for (free_block_id = 0; free_block_id < super_cache -> blocks; free_block_id++) {
+
+        if (j >= DIRECT_POINTERS_PER_INODE) {
+            sync_fs_bitmap(disk);
+            return 1;
+        }
+
+        if (search_bitmap(fs_bitmap_cache, free_block_id)) {
+            *(direct_ptr + j) = free_block_id;
+
+            mark_bitmap(fs_bitmap_cache, MARK_ALLOCATED, free_block_id);
+
+            j++;
+        }
+    }
+
+    fprintf(stderr, "Error: allocate_free_blocks() --> no available free blocks, cannot create file\n");
+
+    return -1;
+
+}
+
+
+int free_allocated_blocks(uint_16 size, uint_32* direct_ptr) {
+    if (size == 0) {
+        return -1;
+    }
+
+    uint_16 direct_block_index = (size - 1) >> 12;
+
+    for (int i = 0; i <= direct_block_index; i++) {
+
+        mark_bitmap(fs_bitmap_cache, MARK_FREE, (int) *(direct_ptr + i));
+
+        *(direct_ptr + i) = 0;
+
+    }
+
+    sync_fs_bitmap(disk);
+
+    return 1;
+
 }
 
 
@@ -175,42 +238,6 @@ bool fs_mount() {
     return false;
 }
 
-int find_free_inode() {
-    int inode_idx;
-
-    for (inode_idx = 0; inode_idx < super_cache -> inodes; inode_idx++) {
-        if (search_bitmap(inode_bitmap_cache, inode_idx)) {
-            return inode_idx;
-        }
-    }
-
-    return -1;
-}
-
-int allocate_free_blocks(uint_32* direct_ptr) {
-    int free_block_id, j = 0;
-
-    for (free_block_id = 0; free_block_id < super_cache -> blocks; free_block_id++) {
-
-        if (j >= DIRECT_POINTERS_PER_INODE) {
-            sync_fs_bitmap(disk);
-            return 1;
-        }
-
-        if (search_bitmap(fs_bitmap_cache, free_block_id)) {
-            *(direct_ptr + j) = free_block_id;
-
-            mark_bitmap(fs_bitmap_cache, MARK_ALLOCATED, free_block_id);
-
-            j++;
-        }
-    }
-
-    fprintf(stderr, "Error: allocate_free_blocks() --> no available free blocks, cannot create file\n");
-
-    return -1;
-
-}
 
 ssize_t fs_create() {
     int inode_idx = find_free_inode(), block, inode_pos;
@@ -221,7 +248,7 @@ ssize_t fs_create() {
     }
 
     block = (inode_idx >> 7) + 1, inode_pos = inode_idx & 127;
-    
+
     read_block(disk, block, inode_cache);
 
     (inode_cache + inode_pos) -> type = IS_A_FILE;
@@ -243,4 +270,46 @@ ssize_t fs_create() {
     printf("Successful created inode %d\n", inode_idx);
 
     return 0;
+}
+
+
+ssize_t fs_remove(int inode_id) {
+    int block, inode_pos, store_bitmap_search;
+
+    block = (inode_id >> 7) + 1, inode_pos = inode_id & 127;
+
+    store_bitmap_search = search_bitmap(inode_bitmap_cache, inode_id);
+
+    if (store_bitmap_search == -1) {
+        fprintf(stderr, "Error: fs_remove() --> inode %d does not exist\n", inode_id);
+
+        return -1;
+    }
+
+    if (!store_bitmap_search) {
+        read_block(disk, block, inode_cache);
+
+        free_allocated_blocks((inode_cache + inode_pos) -> size, (inode_cache + inode_pos) -> direct);
+
+        (inode_cache + inode_pos) -> size = 0;
+
+        (inode_cache + inode_pos) -> type = 0;
+
+        (inode_cache + inode_pos) -> indirect = 0;
+
+        mark_bitmap(inode_bitmap_cache, MARK_FREE, inode_id);
+
+        sync_inode_bitmap(disk);
+
+        write_block(disk, block, inode_cache);
+
+        printf("Successful removed inode %d\n", inode_id);
+
+        return inode_id;
+
+    }
+
+    fprintf(stderr, "Error: fs_remove() --> inode %d already free\n", inode_id);
+
+    return -1;
 }
