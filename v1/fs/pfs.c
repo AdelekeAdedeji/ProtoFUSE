@@ -1,6 +1,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include "../include/pfs.h"
+
+#include <errno.h>
+
 #include "../include/disk_emulator.h"
 
 
@@ -53,14 +56,14 @@ void clear_shared_cache(int no_of_bytes) {
 }
 
 
-ssize_t get_correct_entity(uint_8* bitmap, int entity_no) {
+ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no) {
     int check_entity_no = 0;
 
-    if (bitmap == fs_bitmap_cache) {
+    if (bitmap_t == fs_bitmap_cache) {
         check_entity_no = entity_no < 4096;
     }
 
-    else if (bitmap == inode_bitmap_cache) {
+    else if (bitmap_t == inode_bitmap_cache) {
         check_entity_no = entity_no < 52480;
     }
 
@@ -184,22 +187,60 @@ int find_free_inode() {
     return -1;
 }
 
+int allocate_free_blocks(uint_32* direct_ptr) {
+    int free_block_id, j = 0;
+
+    for (free_block_id = 0; free_block_id < super_cache -> blocks; free_block_id++) {
+
+        if (j >= DIRECT_POINTERS_PER_INODE) {
+            sync_fs_bitmap(disk);
+            return 1;
+        }
+
+        if (search_bitmap(fs_bitmap_cache, free_block_id)) {
+            *(direct_ptr + j) = free_block_id;
+
+            mark_bitmap(fs_bitmap_cache, MARK_ALLOCATED, free_block_id);
+
+            j++;
+        }
+    }
+
+    fprintf(stderr, "Error: allocate_free_blocks() --> no available free blocks, cannot create file\n");
+
+    return -1;
+
+}
 
 ssize_t fs_create() {
     int inode_idx = find_free_inode(), block, inode_pos;
 
-    if (inode_idx == -1)
-        perror("Cannot and will not create more files, disc space full");
+    if (inode_idx == -1) {
+        perror("Error: find_free_inode() --> no available inode, cannot create file");
+        return -1;
+    }
 
-    block = (inode_idx >> 16) + 1, inode_pos = inode_idx & 15;
-
+    block = (inode_idx >> 7) + 1, inode_pos = inode_idx & 127;
+    
     read_block(disk, block, inode_cache);
+
+    (inode_cache + inode_pos) -> type = IS_A_FILE;
 
     (inode_cache + inode_pos) -> size = 0;
 
-    (inode_cache + inode_pos) -> direct;
+    if (allocate_free_blocks((inode_cache + inode_pos) -> direct) == -1) {
+        return -1;
+    }
 
-    (inode_cache + inode_pos) -> indirect;
+    (inode_cache + inode_pos) -> indirect = INDIRECT_BLK;
+
+    mark_bitmap(inode_bitmap_cache, MARK_ALLOCATED, inode_idx);
+
+    sync_inode_bitmap(disk);
+
+    write_block(disk, block, inode_cache);
+
+    printf("Successful created inode %d\n", inode_idx);
 
     return 0;
 }
