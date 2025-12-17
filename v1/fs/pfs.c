@@ -276,7 +276,7 @@ ssize_t fs_create() {
 ssize_t fs_remove(int inode_id) {
     int block, inode_pos, store_bitmap_search;
 
-    block = (inode_id >> 7) + 1, inode_pos = inode_id & 127;
+    block = (inode_id >> 7) + 1; inode_pos = inode_id & 127;
 
     store_bitmap_search = search_bitmap(inode_bitmap_cache, inode_id);
 
@@ -312,4 +312,35 @@ ssize_t fs_remove(int inode_id) {
     fprintf(stderr, "Error: fs_remove() --> inode %d already free\n", inode_id);
 
     return -1;
+}
+
+
+ssize_t fs_stat(int inode_id) {
+    int store_search_bitmap = search_bitmap(inode_bitmap_cache, inode_id), inode_pos, block;
+
+    inode_pos = inode_id & 127; block = (inode_id >> 7) + 1;
+
+    if (store_search_bitmap == -1) {
+        fprintf(stderr, "Error: fs_stat() --> inode %d does not exist\n", inode_id);
+        return -1;
+    }
+
+    if (!store_search_bitmap) {
+        read_block(disk, block, inode_cache);
+
+        return (inode_cache + inode_pos) -> size;
+    }
+
+    fprintf(stderr, "Error: inode %d is not allocated, can't check size\n", inode_id);
+
+    return -1;
+}
+
+
+ssize_t fs_read() {
+
+}
+
+ssize_t fs_write() {
+
 }

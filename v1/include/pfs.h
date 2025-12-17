@@ -87,3 +87,5 @@ bool fs_mount();
 ssize_t fs_create();
 
 ssize_t fs_remove(int inode_id);
+
+ssize_t fs_stat(int inode_id);
