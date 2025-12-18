@@ -8,7 +8,7 @@
 #define BLOCKS                           4096
 #define INODE_BLOCKS                     410
 #define INODES                           52480
-#define DIRECT_POINTERS_PER_INODE        6
+#define DIRECT_BLOCKS_PER_INODE        6
 #define SUP_BLK_NO                       0
 #define FS_BIT_MAP_BLK_NO                411
 #define INODE_BIT_MAP_BLK_NO1            412
@@ -45,14 +45,16 @@ typedef struct inode {
 
     uint_16 type;
     uint_16 size;
-    uint_32 direct[DIRECT_POINTERS_PER_INODE];
+    uint_32 direct[DIRECT_BLOCKS_PER_INODE];
     uint_32 indirect;
 
 } Inode;
 
 typedef struct directory_entry {
+
     char* file_name;
     int i_fd;
+
 } D_Entry;
 
 
@@ -80,6 +82,8 @@ int allocate_free_blocks(uint_32* direct_ptr);
 
 int free_allocated_blocks(uint_16 size, uint_32* direct_ptr);
 
+ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset);
+
 bool fs_format();
 
 bool fs_mount();
@@ -89,3 +93,5 @@ ssize_t fs_create();
 ssize_t fs_remove(int inode_id);
 
 ssize_t fs_stat(int inode_id);
+
+ssize_t fs_read(int inode_id, char* data, int length, off_t offset);
