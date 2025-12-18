@@ -204,6 +204,7 @@ ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off
     uint_16 direct_block_end = direct_block_start + no_of_blocks;
 
     while (bytes_read + offset_at_block > PAGE_SIZE && direct_block_start <= direct_block_end) {
+
         read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
 
         memcpy(user_buff, shared_cache + offset_at_block, PAGE_SIZE - offset_at_block);
