@@ -407,8 +407,6 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
 
     read_block(disk, block, inode_cache);
 
-    (inode_cache + inode_pos) -> size = 4110;
-
     if ((inode_cache + inode_pos) -> size <= 0) {
 
         fprintf(stderr, "Error: Cannot read empty file\n");
