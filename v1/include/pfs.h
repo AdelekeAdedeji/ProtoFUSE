@@ -58,31 +58,31 @@ typedef struct directory_entry {
 } D_Entry;
 
 
-void create_caches();
+static void create_caches();
 
-void fs_bitmap_init();
+static void fs_bitmap_init();
 
-void inode_bitmap_init();
+static void inode_bitmap_init();
 
-void clear_shared_cache(int no_of_bytes);
+static void clear_shared_cache(int no_of_bytes);
 
-ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no);
+static ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no);
 
-int search_bitmap(uint_8* bitmap, int entity_no);
+static int search_bitmap(uint_8* bitmap, int entity_no);
 
-int mark_bitmap(uint_8* bitmap, int op, int entity_no);
+static int mark_bitmap(uint_8* bitmap, int op, int entity_no);
 
-void sync_fs_bitmap(int disk);
+static void sync_fs_bitmap(int disk);
 
-void sync_inode_bitmap(int disk);
+static void sync_inode_bitmap(int disk);
 
-int find_free_inode();
+static int find_free_inode();
 
-int allocate_free_blocks(uint_32* direct_ptr);
+static int allocate_free_blocks(uint_32* direct_ptr);
 
-int free_allocated_blocks(uint_16 size, uint_32* direct_ptr);
+static int free_allocated_blocks(uint_16 size, uint_32* direct_ptr);
 
-ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset);
+static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset);
 
 bool fs_format();
 

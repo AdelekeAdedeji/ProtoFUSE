@@ -19,7 +19,7 @@ static Inode* inode_cache = NULL;
 
 
 
-void create_caches() {
+static void create_caches() {
     shared_cache = calloc(PAGE_SIZE, sizeof(char));
 
     fs_bitmap_cache = calloc(PAGE_SIZE, sizeof(char));
@@ -32,14 +32,14 @@ void create_caches() {
 }
 
 
-void fs_bitmap_init() {
+static void fs_bitmap_init() {
     read_block(disk, super_cache->fs_bitmap_block, fs_bitmap_cache);
 
     memset(fs_bitmap_cache, 0xFF, 512);
 }
 
 
-void inode_bitmap_init() {
+static void inode_bitmap_init() {
     read_block(disk, super_cache->inode_bitmap_block1, inode_bitmap_cache);
 
     read_block(disk, super_cache->inode_bitmap_block2, inode_bitmap_cache + PAGE_SIZE);
@@ -49,12 +49,12 @@ void inode_bitmap_init() {
 }
 
 
-void clear_shared_cache(int no_of_bytes) {
+static void clear_shared_cache(int no_of_bytes) {
     memset(shared_cache, 0, no_of_bytes);
 }
 
 
-ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no) {
+static ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no) {
     int check_entity_no = 0;
 
     if (entity_no < 0) return check_entity_no;
@@ -72,7 +72,7 @@ ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no) {
 }
 
 
-int search_bitmap(uint_8* bitmap, int entity_no) {
+static int search_bitmap(uint_8* bitmap, int entity_no) {
     int index, bit_blk;
 
     if (!get_correct_entity(bitmap, entity_no)) {
@@ -85,7 +85,7 @@ int search_bitmap(uint_8* bitmap, int entity_no) {
 }
 
 
-int mark_bitmap(uint_8* bitmap, int op, int entity_no) {
+static int mark_bitmap(uint_8* bitmap, int op, int entity_no) {
     int index, bit_blk;
 
     if (!get_correct_entity(bitmap, entity_no)) {
@@ -106,20 +106,20 @@ int mark_bitmap(uint_8* bitmap, int op, int entity_no) {
 }
 
 
-void sync_fs_bitmap(int disk) {
+static void sync_fs_bitmap(int disk) {
     write_block(disk, super_cache->fs_bitmap_block, fs_bitmap_cache);
 
 }
 
 
-void sync_inode_bitmap(int disk) {
+static void sync_inode_bitmap(int disk) {
     write_block(disk, super_cache->inode_bitmap_block1, inode_bitmap_cache);
 
     write_block(disk, super_cache->inode_bitmap_block2, inode_bitmap_cache + PAGE_SIZE);
 }
 
 
-int find_free_inode() {
+static int find_free_inode() {
     int inode_idx;
 
     for (inode_idx = 0; inode_idx < super_cache -> inodes; inode_idx++) {
@@ -132,7 +132,7 @@ int find_free_inode() {
 }
 
 
-int allocate_free_blocks(uint_32* direct_ptr) {
+static int allocate_free_blocks(uint_32* direct_ptr) {
     int free_block_id, j = 0;
 
     for (free_block_id = 0; free_block_id < super_cache -> blocks; free_block_id++) {
@@ -158,7 +158,7 @@ int allocate_free_blocks(uint_32* direct_ptr) {
 }
 
 
-int free_allocated_blocks(uint_16 size, uint_32* direct_ptr) {
+static int free_allocated_blocks(uint_16 size, uint_32* direct_ptr) {
     if (size == 0) {
         return -1;
     }
@@ -180,7 +180,7 @@ int free_allocated_blocks(uint_16 size, uint_32* direct_ptr) {
 }
 
 
-ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset) {
+static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset) {
     int file_size = DIRECT_BLOCKS_PER_INODE * PAGE_SIZE, requested_bytes = 0;
 
     if (bytes_read <= 0 || offset < 0) {
@@ -423,6 +423,10 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
     }
 
     return read_inode_disk_block(inode_cache + inode_pos, data, length, offset);
+
+}
+
+ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset) {
 
 }
 
