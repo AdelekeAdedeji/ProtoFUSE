@@ -84,6 +84,8 @@ static int free_allocated_blocks(uint_16 size, uint_32* direct_ptr);
 
 static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset);
 
+ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, off_t offset);
+
 bool fs_format();
 
 bool fs_mount();
@@ -95,3 +97,5 @@ ssize_t fs_remove(int inode_id);
 ssize_t fs_stat(int inode_id);
 
 ssize_t fs_read(int inode_id, char* data, int length, off_t offset);
+
+ssize_t fs_write(int inode_id, char* data, int length, off_t offset);
