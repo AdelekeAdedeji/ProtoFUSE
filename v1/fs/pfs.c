@@ -189,42 +189,92 @@ static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_re
         return 0;
     }
 
+    if (offset >= inode -> size) {
+        return 0;
+    }
+
     if (bytes_read > inode -> size || bytes_read + offset > inode -> size) {
         fprintf(stderr, "EOF: Cannot read past file end (%.2fKB)\ntruncating...........\n\n", inode -> size / 1024.0);
 
         bytes_read -= (int) (bytes_read + offset - inode -> size);
     }
 
+
     uint_16 direct_block_start = offset >> 12, offset_at_block = offset & 4095,
 
-    no_of_blocks = (bytes_read + offset_at_block - 1) >> 12;
+    direct_block_end = (bytes_read + offset_at_block - 1) >> 12, condition, bytes_retrieved = 0;
 
-    uint_16 direct_block_end = direct_block_start + no_of_blocks, bytes_copied = 0;
+    while (direct_block_start <= direct_block_end) {
 
-    while (bytes_read + offset_at_block > PAGE_SIZE && direct_block_start <= direct_block_end) {
+        condition = bytes_read + offset_at_block > PAGE_SIZE;
 
-        bytes_copied = PAGE_SIZE - offset_at_block;
+        bytes_retrieved = condition ? PAGE_SIZE - offset_at_block : bytes_read;
 
         read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
 
-        memcpy(user_buff, shared_cache + offset_at_block, bytes_copied);
+        memcpy(user_buff, shared_cache + offset_at_block, bytes_retrieved);
 
-        bytes_read -= bytes_copied;
+        bytes_read -= bytes_retrieved;
 
-        user_buff += bytes_copied;
+        user_buff += bytes_retrieved;
 
-        requested_bytes += bytes_copied;
+        requested_bytes += bytes_retrieved;
 
         offset_at_block = 0;
 
         direct_block_start++;
     }
 
-    read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
+    return requested_bytes;
 
-    memcpy(user_buff, shared_cache + offset_at_block, bytes_read);
+}
 
-    requested_bytes += bytes_read;
+
+ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, off_t offset) {
+    int max_file_size = DIRECT_BLOCKS_PER_INODE * PAGE_SIZE, requested_bytes = 0;
+
+    if (bytes_write <= 0 || offset < 0) {
+        return 0;
+    }
+
+    if (bytes_write > max_file_size || bytes_write + offset > max_file_size) {
+        fprintf(stderr, "Error: Cannot write past max file size (%dKB)\ntruncating.......\n", max_file_size >> 10);
+
+        bytes_write -= (int) (bytes_write + offset - max_file_size);
+    }
+
+    uint_16 direct_block_start = offset >> 12, direct_block_end = (offset + bytes_write - 1) >> 12,
+
+    offset_at_block = offset & 4095, condition, bytes_written;
+
+
+    while (direct_block_start <= direct_block_end) {
+
+        condition = bytes_write + offset_at_block > PAGE_SIZE;
+
+        bytes_written = condition ? PAGE_SIZE - offset_at_block : bytes_write;
+
+        read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
+
+        memcpy(shared_cache + offset_at_block, user_buff, bytes_written);
+
+        write_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
+
+        user_buff += bytes_written;
+
+        bytes_write -= bytes_written;
+
+        requested_bytes += bytes_written;
+
+        offset_at_block = 0;
+
+        direct_block_start++;
+    }
+
+    if (requested_bytes + offset > inode -> size) {
+        inode -> size = requested_bytes + offset;
+        printf("file-size: %d\n", inode -> size);
+    }
 
     return requested_bytes;
 
@@ -407,13 +457,6 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
 
     read_block(disk, block, inode_cache);
 
-    if ((inode_cache + inode_pos) -> size <= 0) {
-
-        fprintf(stderr, "Error: Cannot read empty file\n");
-
-        return 0;
-    }
-
     if ((inode_cache + inode_pos) -> type != IS_A_FILE) {
 
         fprintf(stderr, "Error: fs_read() --> Cannot read, inode %d is not a file\n", inode_id);
@@ -422,98 +465,21 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
 
     }
 
+    if ((inode_cache + inode_pos) -> size <= 0) {
+
+        fprintf(stderr, "Error: Cannot read empty file\n");
+
+        return 0;
+    }
+
     return read_inode_disk_block(inode_cache + inode_pos, data, length, offset);
 
 }
 
-ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, off_t offset) {
-    int file_size = DIRECT_BLOCKS_PER_INODE * PAGE_SIZE, requested_bytes = 0;
-
-    if (bytes_write <= 0 || offset < 0) {
-        return 0;
-    }
-
-    if (bytes_write > file_size || bytes_write + offset > file_size) {
-        fprintf(stderr, "Error: Cannot write past max file size (%dKB)\n", file_size >> 10);
-
-        bytes_write -= (int) (bytes_write + offset - file_size);
-    }
-
-    uint_16 direct_block_start = offset >> 12, no_of_direct_blocks = (offset + bytes_write - 1) >> 12,
-
-    direct_block_end = direct_block_start + no_of_direct_blocks, offset_at_block = offset & 4095, bytes_copied;
-
-    while (bytes_write + offset_at_block > PAGE_SIZE && direct_block_start <= direct_block_end) {
-
-        bytes_copied = PAGE_SIZE - offset_at_block;
-
-        read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
-
-        if (inode -> size + bytes_copied > file_size) {
-            bytes_copied = file_size - inode -> size;
-
-            memcpy(shared_cache + offset_at_block, user_buff, bytes_copied);
-
-            write_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
-
-            requested_bytes += bytes_copied;
-
-            inode -> size += bytes_copied;
-
-            return requested_bytes;
-        }
-
-        memcpy(shared_cache + offset_at_block, user_buff, bytes_copied);
-
-        write_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
-
-        user_buff += bytes_copied;
-
-        bytes_write -= bytes_copied;
-
-        requested_bytes += bytes_copied;
-
-        inode -> size += bytes_copied;
-
-        offset_at_block = 0;
-
-        direct_block_start++;
-    }
-
-    bytes_copied = bytes_write;
-
-    read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
-
-    if (inode -> size + bytes_copied > file_size) {
-        bytes_copied = file_size - inode -> size;
-
-        memcpy(shared_cache + offset_at_block, user_buff, bytes_copied);
-
-        write_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
-
-        requested_bytes += bytes_copied;
-
-        inode -> size += bytes_copied;
-
-        return requested_bytes;
-
-    }
-
-    memcpy(shared_cache + offset_at_block, user_buff, bytes_copied);
-
-    write_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
-
-    requested_bytes += bytes_copied;
-
-    inode -> size += bytes_copied;
-
-    printf("write was here a second time\n");
-
-    return requested_bytes;
-
-}
 
 ssize_t fs_write(int inode_id, char* data, int length, off_t offset) {
+    ssize_t number_of_bytes_written = 0;
+
     int inode_is_free = search_bitmap(inode_bitmap_cache, inode_id), inode_pos, block;
 
     inode_pos = inode_id & 127; block = (inode_id >> 7) + 1;
@@ -538,10 +504,10 @@ ssize_t fs_write(int inode_id, char* data, int length, off_t offset) {
 
     }
 
-    printf("write was here oo\n");
-
-    write_inode_disk_block(inode_cache + inode_pos, data, length, offset);
+    number_of_bytes_written = write_inode_disk_block(inode_cache + inode_pos, data, length, offset);
 
     write_block(disk, block, inode_cache);
+
+    return number_of_bytes_written;
 
 }

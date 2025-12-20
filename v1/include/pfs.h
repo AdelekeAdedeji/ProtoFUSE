@@ -57,6 +57,10 @@ typedef struct directory_entry {
 
 } D_Entry;
 
+typedef struct file_system {
+
+} pfs;
+
 
 static void create_caches();
 
