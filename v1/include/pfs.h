@@ -70,6 +70,8 @@ static void inode_bitmap_init();
 
 static void clear_shared_cache(int no_of_bytes);
 
+int fs_mounted();
+
 static ssize_t get_correct_entity(uint_8* bitmap_t, int entity_no);
 
 static int search_bitmap(uint_8* bitmap, int entity_no);
@@ -90,7 +92,7 @@ static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_re
 
 ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, off_t offset);
 
-bool fs_format();
+bool fs_format(char* disk_path);
 
 bool fs_mount();
 
@@ -103,3 +105,5 @@ ssize_t fs_stat(int inode_id);
 ssize_t fs_read(int inode_id, char* data, int length, off_t offset);
 
 ssize_t fs_write(int inode_id, char* data, int length, off_t offset);
+
+bool fs_destroy();

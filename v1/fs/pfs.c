@@ -182,10 +182,10 @@ static int free_allocated_blocks(uint_16 size, uint_32* direct_ptr) {
 }
 
 
-static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_read, off_t offset) {
+static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_to_read, off_t offset) {
     int requested_bytes = 0;
 
-    if (bytes_read <= 0 || offset < 0) {
+    if (bytes_to_read <= 0 || offset < 0) {
         return 0;
     }
 
@@ -193,28 +193,28 @@ static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_re
         return 0;
     }
 
-    if (bytes_read > inode -> size || bytes_read + offset > inode -> size) {
+    if (bytes_to_read > inode -> size || bytes_to_read + offset > inode -> size) {
         fprintf(stderr, "EOF: Cannot read past file end (%.2fKB)\ntruncating...........\n\n", inode -> size / 1024.0);
 
-        bytes_read -= (int) (bytes_read + offset - inode -> size);
+        bytes_to_read -= (int) (bytes_to_read + offset - inode -> size);
     }
 
 
     uint_16 direct_block_start = offset >> 12, offset_at_block = offset & 4095,
 
-    direct_block_end = (bytes_read + offset_at_block - 1) >> 12, condition, bytes_retrieved = 0;
+    direct_block_end = (bytes_to_read + offset_at_block - 1) >> 12, condition, bytes_retrieved = 0;
 
     while (direct_block_start <= direct_block_end) {
 
-        condition = bytes_read + offset_at_block > PAGE_SIZE;
+        condition = bytes_to_read + offset_at_block > PAGE_SIZE;
 
-        bytes_retrieved = condition ? PAGE_SIZE - offset_at_block : bytes_read;
+        bytes_retrieved = condition ? PAGE_SIZE - offset_at_block : bytes_to_read;
 
         read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
 
         memcpy(user_buff, shared_cache + offset_at_block, bytes_retrieved);
 
-        bytes_read -= bytes_retrieved;
+        bytes_to_read -= bytes_retrieved;
 
         user_buff += bytes_retrieved;
 
@@ -230,29 +230,29 @@ static ssize_t read_inode_disk_block(Inode* inode, char* user_buff, int bytes_re
 }
 
 
-ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, off_t offset) {
+ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_to_write, off_t offset) {
     int max_file_size = DIRECT_BLOCKS_PER_INODE * PAGE_SIZE, requested_bytes = 0;
 
-    if (bytes_write <= 0 || offset < 0) {
+    if (bytes_to_write <= 0 || offset < 0) {
         return 0;
     }
 
-    if (bytes_write > max_file_size || bytes_write + offset > max_file_size) {
+    if (bytes_to_write > max_file_size || bytes_to_write + offset > max_file_size) {
         fprintf(stderr, "Error: Cannot write past max file size (%dKB)\ntruncating.......\n", max_file_size >> 10);
 
-        bytes_write -= (int) (bytes_write + offset - max_file_size);
+        bytes_to_write -= (int) (bytes_to_write + offset - max_file_size);
     }
 
-    uint_16 direct_block_start = offset >> 12, direct_block_end = (offset + bytes_write - 1) >> 12,
+    uint_16 direct_block_start = offset >> 12, direct_block_end = (offset + bytes_to_write - 1) >> 12,
 
     offset_at_block = offset & 4095, condition, bytes_written;
 
 
     while (direct_block_start <= direct_block_end) {
 
-        condition = bytes_write + offset_at_block > PAGE_SIZE;
+        condition = bytes_to_write + offset_at_block > PAGE_SIZE;
 
-        bytes_written = condition ? PAGE_SIZE - offset_at_block : bytes_write;
+        bytes_written = condition ? PAGE_SIZE - offset_at_block : bytes_to_write;
 
         read_block(disk, (int) *(inode -> direct + direct_block_start), shared_cache);
 
@@ -262,7 +262,7 @@ ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, o
 
         user_buff += bytes_written;
 
-        bytes_write -= bytes_written;
+        bytes_to_write -= bytes_written;
 
         requested_bytes += bytes_written;
 
@@ -277,11 +277,10 @@ ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_write, o
     }
 
     return requested_bytes;
-
 }
 
 
-bool fs_format() {
+bool fs_format(char* disk_path) {
     create_caches();
 
     SuperBlock sup = {
@@ -295,7 +294,14 @@ bool fs_format() {
         INODE_BIT_MAP_BLK_NO2
     };
 
-    disk = open_disk(DISK_PATH, DISK_SIZE);
+    disk = open_disk(strlen(disk_path) > 0 ? disk_path : DISK_PATH, DISK_SIZE);
+
+    if (disk == -1) {
+
+        fprintf(stderr, "Error: open_disk() failed, could be invalid file_path\n");
+
+        return false;
+    }
 
     read_block(disk, sup.super_block, super_cache);
 
@@ -318,29 +324,40 @@ bool fs_format() {
 }
 
 bool fs_mount() {
-    if (disk > 0) {
-        read_block(disk, SUP_BLK_NO, super_cache);
-
-        read_block(disk, super_cache->fs_bitmap_block, fs_bitmap_cache);
-
-        read_block(disk, super_cache->inode_bitmap_block1, inode_bitmap_cache);
-
-        read_block(disk, super_cache->inode_bitmap_block2, inode_bitmap_cache + PAGE_SIZE);
-
-        SuperBlock* sup_blk_ptr = super_cache;
-
-        if (sup_blk_ptr -> magic_number == MAGIC_NUMBER) {
-            mount();
-
-            return is_mounted();
-        }
+    if (disk < 0) {
+        return false;
     }
 
-    return false;
+    read_block(disk, SUP_BLK_NO, super_cache);
+
+    read_block(disk, super_cache->fs_bitmap_block, fs_bitmap_cache);
+
+    read_block(disk, super_cache->inode_bitmap_block1, inode_bitmap_cache);
+
+    read_block(disk, super_cache->inode_bitmap_block2, inode_bitmap_cache + PAGE_SIZE);
+
+    SuperBlock* sup_blk_ptr = super_cache;
+
+    if (sup_blk_ptr -> magic_number == MAGIC_NUMBER) {
+        mount();
+    }
+
+    return is_mounted();
 }
 
+int fs_mounted() {
+    if (!is_mounted()) {
+        fprintf(stderr, "Error: Filesystem not mounted\n");
+        return 0;
+    }
+
+    return 1;
+}
 
 ssize_t fs_create() {
+
+    if (!fs_mounted()) return  -1;
+
     int inode_idx = find_free_inode(), block, inode_pos;
 
     if (inode_idx == -1) {
@@ -370,11 +387,13 @@ ssize_t fs_create() {
 
     printf("Successful created inode %d\n", inode_idx);
 
-    return 0;
+    return inode_idx;
 }
 
 
 ssize_t fs_remove(int inode_id) {
+    if (!fs_mounted()) return  -1;
+
     int block, inode_pos, store_bitmap_search;
 
     block = (inode_id >> 7) + 1; inode_pos = inode_id & 127;
@@ -387,36 +406,39 @@ ssize_t fs_remove(int inode_id) {
         return -1;
     }
 
-    if (!store_bitmap_search) {
-        read_block(disk, block, inode_cache);
+    if (store_bitmap_search) {
+        fprintf(stderr, "Error: fs_remove() --> inode %d already free\n", inode_id);
 
-        free_allocated_blocks((inode_cache + inode_pos) -> size, (inode_cache + inode_pos) -> direct);
-
-        (inode_cache + inode_pos) -> size = 0;
-
-        (inode_cache + inode_pos) -> type = 0;
-
-        (inode_cache + inode_pos) -> indirect = 0;
-
-        mark_bitmap(inode_bitmap_cache, MARK_FREE, inode_id);
-
-        sync_inode_bitmap(disk);
-
-        write_block(disk, block, inode_cache);
-
-        printf("Successful removed inode %d\n", inode_id);
-
-        return inode_id;
+        return -1;
 
     }
 
-    fprintf(stderr, "Error: fs_remove() --> inode %d already free\n", inode_id);
+    read_block(disk, block, inode_cache);
 
-    return -1;
+    free_allocated_blocks((inode_cache + inode_pos) -> size, (inode_cache + inode_pos) -> direct);
+
+    (inode_cache + inode_pos) -> size = 0;
+
+    (inode_cache + inode_pos) -> type = 0;
+
+    (inode_cache + inode_pos) -> indirect = 0;
+
+    mark_bitmap(inode_bitmap_cache, MARK_FREE, inode_id);
+
+    sync_inode_bitmap(disk);
+
+    write_block(disk, block, inode_cache);
+
+    printf("Successful removed inode %d\n", inode_id);
+
+    return inode_id;
+
 }
 
 
 ssize_t fs_stat(int inode_id) {
+    if (!fs_mounted()) return  -1;
+
     int inode_is_free = search_bitmap(inode_bitmap_cache, inode_id), inode_pos, block;
 
     inode_pos = inode_id & 127; block = (inode_id >> 7) + 1;
@@ -426,19 +448,22 @@ ssize_t fs_stat(int inode_id) {
         return -1;
     }
 
-    if (!inode_is_free) {
-        read_block(disk, block, inode_cache);
+    if (inode_is_free) {
+        fprintf(stderr, "Error: inode %d is not allocated, can't check size\n", inode_id);
 
-        return (inode_cache + inode_pos) -> size;
+        return -1;
     }
 
-    fprintf(stderr, "Error: inode %d is not allocated, can't check size\n", inode_id);
+    read_block(disk, block, inode_cache);
 
-    return -1;
+    return (inode_cache + inode_pos) -> size;
+
 }
 
 
 ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
+    if (!fs_mounted()) return  -1;
+
     int inode_is_free = search_bitmap(inode_bitmap_cache, inode_id), inode_pos, block;
 
     inode_pos = inode_id & 127; block = (inode_id >> 7) + 1;
@@ -452,7 +477,7 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
     if (inode_is_free) {
         fprintf(stderr, "Error: fs_read() --> Cannot read, inode %d not allocated\n", inode_id);
 
-        return -1;
+        return 0;
     }
 
     read_block(disk, block, inode_cache);
@@ -467,7 +492,7 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
 
     if ((inode_cache + inode_pos) -> size <= 0) {
 
-        fprintf(stderr, "Error: Cannot read empty file\n");
+        // fprintf(stderr, "Error: Cannot read empty file\n");
 
         return 0;
     }
@@ -478,6 +503,8 @@ ssize_t fs_read(int inode_id, char* data, int length, off_t offset) {
 
 
 ssize_t fs_write(int inode_id, char* data, int length, off_t offset) {
+    if (!fs_mounted()) return  -1;
+
     ssize_t number_of_bytes_written = 0;
 
     int inode_is_free = search_bitmap(inode_bitmap_cache, inode_id), inode_pos, block;
@@ -509,5 +536,18 @@ ssize_t fs_write(int inode_id, char* data, int length, off_t offset) {
     write_block(disk, block, inode_cache);
 
     return number_of_bytes_written;
+
+}
+
+bool fs_destroy() {
+    if (disk < 0 && !is_mounted()) return false;
+    unmount();
+    free(super_cache);
+    free(inode_cache);
+    free(shared_cache);
+    free(fs_bitmap_cache);
+    free(inode_bitmap_cache);
+    close_disk(disk);
+    return true;
 
 }
