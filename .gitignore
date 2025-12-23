@@ -1,5 +1,4 @@
 .idea
-v1/build
-v1/cmake-build-debug
-v1/CMakeLists.txt
+build
+cmake-build-debug
 mod.txt

@@ -1,9 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
-#include "../include/pfs.h"
-
 #include <ctype.h>
-#include <errno.h>
+#include "../include/pfs.h"
 #include "../include/disk_emulator.h"
 
 

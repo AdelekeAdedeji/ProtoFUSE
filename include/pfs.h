@@ -8,7 +8,7 @@
 #define BLOCKS                           4096
 #define INODE_BLOCKS                     410
 #define INODES                           52480
-#define DIRECT_BLOCKS_PER_INODE        6
+#define DIRECT_BLOCKS_PER_INODE          6
 #define SUP_BLK_NO                       0
 #define FS_BIT_MAP_BLK_NO                411
 #define INODE_BIT_MAP_BLK_NO1            412
