@@ -61,3 +61,5 @@ int write_block(int disk, int block_nr, void* block) {
 
 
 void sync_disk() { fsync(fd); }
+
+void close_disk() { close(fd); }

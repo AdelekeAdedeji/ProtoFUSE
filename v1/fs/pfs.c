@@ -7,7 +7,9 @@
 #include "../include/disk_emulator.h"
 
 
-int disk;
+int disk = -1;
+
+int is_fs_formated = 0;
 
 static void* shared_cache = NULL;
 
@@ -109,7 +111,7 @@ static int mark_bitmap(uint_8* bitmap, int op, int entity_no) {
 
 
 static void sync_fs_bitmap(int disk) {
-    write_block(disk, super_cache->fs_bitmap_block, fs_bitmap_cache);
+    write_block(disk, super_cache -> fs_bitmap_block, fs_bitmap_cache);
 
 }
 
@@ -281,6 +283,11 @@ ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_to_write
 
 
 bool fs_format(char* disk_path) {
+    if (is_fs_formated >= 1) {
+        fprintf(stderr, "File system already formatted\n");
+        return 0;
+    }
+
     create_caches();
 
     SuperBlock sup = {
@@ -319,12 +326,15 @@ bool fs_format(char* disk_path) {
 
     sync_inode_bitmap(disk);
 
+    is_fs_formated++;
+
     return true;
 
 }
 
 bool fs_mount() {
     if (disk < 0) {
+        printf("Unable to mount, filesystem not formatted\n");
         return false;
     }
 
@@ -437,7 +447,7 @@ ssize_t fs_remove(int inode_id) {
 
 
 ssize_t fs_stat(int inode_id) {
-    if (!fs_mounted()) return  -1;
+    if (!fs_mounted()) { return -1; }
 
     int inode_is_free = search_bitmap(inode_bitmap_cache, inode_id), inode_pos, block;
 
@@ -549,5 +559,4 @@ bool fs_destroy() {
     free(inode_bitmap_cache);
     close_disk(disk);
     return true;
-
 }

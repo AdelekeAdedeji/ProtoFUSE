@@ -18,6 +18,8 @@ int write_block(int disk, int block_nr, void* block);
 
 void sync_disk();
 
+void close_disk();
+
 void mount();
 
 void unmount();
