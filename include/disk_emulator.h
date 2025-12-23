@@ -5,9 +5,6 @@
 
 #define PAGE_SIZE 4096
 
-
-#define DISK_PATH  "/home/adedeji/CLion/CLionProjects/ssd/data.bin"
-
 #define FILE_ERROR -1
 
 int open_disk(const char* file_name, const int n_bytes);

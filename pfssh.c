@@ -175,8 +175,6 @@ void do_echo(int args, int inode) {
 
     }
 
-    printf("%s\n", shell_cache);
-
     fs_write(inode, shell_cache, (int) strlen(shell_cache), 0);
 
     memset(shell_cache, 0, PFSSH_CACHE_NMEMBERS);

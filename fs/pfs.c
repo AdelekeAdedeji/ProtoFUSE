@@ -282,7 +282,7 @@ ssize_t write_inode_disk_block(Inode* inode, char* user_buff, int bytes_to_write
 
 bool fs_format(char* disk_path) {
     if (is_fs_formated >= 1) {
-        fprintf(stderr, "File system already formatted\n");
+        fprintf(stderr, "File system already formatted\n~");
         return 0;
     }
 
@@ -299,7 +299,7 @@ bool fs_format(char* disk_path) {
         INODE_BIT_MAP_BLK_NO2
     };
 
-    disk = open_disk(strlen(disk_path) > 0 ? disk_path : DISK_PATH, DISK_SIZE);
+    disk = open_disk(disk_path, DISK_SIZE);
 
     if (disk == -1) {
 
