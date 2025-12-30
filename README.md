@@ -7,7 +7,7 @@ ProtoFUSE is a simple user space file system. It is aimed at emulating how a fil
 This is currently v1, with improvements to be made, however the current version works pretty well and does 
 expected operations.
 
-The filesystem contains a disk emulator ([disk_emulator.c](https://github.com/AdelekeAdedeji/ProtoFUSE/blob/main/disk_library/disk_emulator.c)) whose job is to emulate a physical disk and provides 
+The filesystem contains a disk emulator ([disk_emulator.c](https://github.com/AdelekeAdedeji/ProtoFUSE/blob/main/disk_library/disk_emulator.c)) that emulates a physical disk and provides 
 interfaces like open_disk which opens an existing disk (or create the disk if it doesn't exist), 
 read_block, write_block to perform Disk I/O read-write operations, sync_disk to immediately write disk caches to disk and 
 close_disk which closes the disk (the emulated disk is a bin file and must be passed as an argument to the executable)
