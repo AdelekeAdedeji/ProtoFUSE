@@ -1,6 +1,6 @@
 **ProtoFUSE**
 
-status: ongoing
+**Status**: ongoing
 
 ProtoFUSE is a simple user space file system. It is aimed at emulating how a file system works at a very foundational level (at least for now)
 
